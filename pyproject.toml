@@ -1,0 +1,9 @@
+[project]
+name = "ai-agents-eval-techniques"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "textstat>=0.7.8",
+]
