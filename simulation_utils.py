@@ -8,6 +8,7 @@ from typing import List, Dict, Tuple, Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableLambda
 from langchain_core.prompts import PromptTemplate
+# from langgraph import LangGraphSimulator
 
 
 def langchain_to_openai_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
@@ -68,7 +69,7 @@ def create_simulated_user(system_prompt_template: str, llm) -> RunnableLambda:
     return RunnableLambda(_invoke)
 
 
-def create_chat_simulator(assistant_fn, simulated_user, input_key="input", max_turns=10):
+def create_chat_simulator1(assistant_fn, simulated_user, input_key="input", max_turns=10):
     """
     Creates a simulation harness that alternates between assistant and simulated user.
 
@@ -114,3 +115,56 @@ def create_chat_simulator(assistant_fn, simulated_user, input_key="input", max_t
             return _stream_simulation(example)
 
     return Simulator()
+
+
+# If you're using LangGraph or your own simulator class, import it here.
+
+
+def _create_langgraph_simulator(assistant, simulated_user, input_key="input", max_turns=10):
+    """
+    Stub for LangGraph simulator construction.
+    Replace this with your actual LangGraph graph building logic.
+    Should return an object with a .stream(input_dict) method.
+    """
+    class DummySimulator:
+        def stream(self, input_dict):
+            # Dummy conversation: replace with your actual simulation loop
+            messages = []
+            # Simulate a turn-based conversation for demonstration
+            for turn in range(min(max_turns, 2)):
+                messages.append({"role": "user", "content": f"user says: {input_dict[input_key]}"})
+                messages.append({"role": "assistant", "content": f"assistant replies: {input_dict[input_key]}"})
+            messages.append({"role": "user", "content": "FINISHED"})
+            # Emulate LangGraph streaming event format
+            for m in messages:
+                yield {"assistant" if m["role"] == "assistant" else "user": {"messages": [m]}}
+            yield {"__end__": {}}
+    return DummySimulator()
+
+def create_chat_simulator(assistant, simulated_user, input_key="input", max_turns=10):
+    """
+    Returns a factory function suitable for LangSmith's run_on_dataset.
+    The factory takes an input dict and returns a dict with 'messages'.
+    """
+    simulator = _create_langgraph_simulator(assistant, simulated_user, input_key=input_key, max_turns=max_turns)
+    
+    def simulator_factory(example: dict) -> dict:
+        """
+        example: dict with keys like 'input', 'instructions'.
+        Returns: dict with 'messages' (conversation transcript).
+        """
+        events = simulator.stream({
+            "input": example[input_key],
+            "instructions": example["instructions"],
+        })
+        messages = []
+        for event in events:
+            if "__end__" in event:
+                break
+            # Each event is a dict: {role: {"messages": [message_dict]}}
+            role, state = next(iter(event.items()))
+            next_message = state["messages"][-1]
+            messages.append(next_message)
+        return {"messages": messages}
+    
+    return simulator_factory
